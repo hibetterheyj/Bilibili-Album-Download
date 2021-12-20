@@ -36,4 +36,13 @@
 - [x] Add EXIF manipulation tools to modify image datetime
     - piexif
         ```pip install piexif`
-
+        Given file is neither JPEG nor TIFF (https://githubmemory.com/repo/karlch/vimiv-qt/issues/370)
+    - pyexiv2
+        pip install pyexiv2
+        pyexiv2 supports most common formats
+        ```
+        Directory Image: IFD exceeds data buffer, cannot read next pointer.
+        ```
+        - https://github.com/LeoHsiao1/pyexiv2/issues/77
+        PNG does not support EXIF so I made this to fix the creation/modification time instead, based on Wilbur Dsouza's answer: https://stackoverflow.com/a/63968395
+        https://stackoverflow.com/questions/9542359/does-png-contain-exif-data-like-jpg

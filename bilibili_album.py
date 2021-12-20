@@ -3,7 +3,8 @@ import requests, os, sys, math
 import time, datetime
 from time import gmtime, strftime
 
-import piexif
+# import piexif
+import pyexiv2
 
 basicApiUrl = "https://api.vc.bilibili.com/link_draw/v1/doc/upload_count?uid="
 apiUrl = (
@@ -91,18 +92,58 @@ def downloadDrawList(bid, page, usrDir):
         pass
 
 
-def updateExifTime(imgPath, postDatetime):
-    newExifDate = postDatetime.strftime("%Y:%m:%d %H:%M:%S")
+# https://github.com/LeoHsiao1/pyexiv2/issues/77
+def updateMetaTime(imgPath, postDatetime):
+    newMetaDate = postDatetime.strftime("%Y:%m:%d %H:%M:%S")
+
+    format = imgPath.split(".")[-1]
+
+    if format == 'png':
+        with pyexiv2.Image(imgPath) as img:
+            xmp_dict = img.read_xmp()
+            img.modify_xmp({'Xmp.xmp.CreateDate': newMetaDate})
+        print("MetaTime updated!")
+    else:
+        with pyexiv2.Image(imgPath) as img:
+            exif_dict = img.read_exif()
+            if not ('Exif.Photo.DateTimeOriginal' in exif_dict) and not (
+                'Exif.Photo.DateTimeDigitized' in exif_dict
+            ):
+                img.modify_exif(
+                    {
+                        'Exif.Photo.DateTimeOriginal': newMetaDate,
+                        'Exif.Photo.DateTimeDigitized': newMetaDate,
+                    }
+                )
+                print("MetaTime updated!")
+            elif ('Exif.Photo.DateTimeOriginal' in exif_dict) and (
+                'Exif.Photo.DateTimeDigitized' in exif_dict
+            ):
+                # small images have exif information
+                print("Already has MetaTime!")
+                pass
+            else:
+                if 'Exif.Photo.DateTimeOriginal' in exif_dict:
+                    img.modify_exif({'Exif.Photo.DateTimeDigitized': newMetaDate})
+                else:
+                    img.modify_exif({'Exif.Photo.DateTimeOriginal': newMetaDate})
+                print("MetaTime updated!")
+
+
+def updateMetaTime_piexif(imgPath, postDatetime):
+    import piexif
+
+    newMetaDate = postDatetime.strftime("%Y:%m:%d %H:%M:%S")
 
     exif_dict = piexif.load(imgPath)
     if not (piexif.ExifIFD.DateTimeOriginal in exif_dict["Exif"]) and not (
         piexif.ExifIFD.DateTimeDigitized in exif_dict["Exif"]
     ):
-        exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newExifDate
-        exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = newExifDate
+        exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newMetaDate
+        exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = newMetaDate
         exif_bytes = piexif.dump(exif_dict)
         piexif.insert(exif_bytes, imgPath)
-        print("ExifTime updated!")
+        print("MetaTime updated!")
     elif (piexif.ExifIFD.DateTimeOriginal in exif_dict["Exif"]) and (
         piexif.ExifIFD.DateTimeDigitized in exif_dict["Exif"]
     ):
@@ -110,12 +151,12 @@ def updateExifTime(imgPath, postDatetime):
         pass
     else:
         if piexif.ExifIFD.DateTimeOriginal in exif_dict["Exif"]:
-            exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = newExifDate
+            exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = newMetaDate
         else:
-            exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newExifDate
+            exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newMetaDate
         exif_bytes = piexif.dump(exif_dict)
         piexif.insert(exif_bytes, imgPath)
-        print("ExifTime updated!")
+        print("MetaTime updated!")
 
 
 # Download draws
@@ -154,7 +195,7 @@ def downloadDraw(bid, did, urls, usrDir, postDatetime, desc):
         try:
             if os.path.exists(imgPath):
                 print("Skipped " + did + " " + imgUrl)
-                updateExifTime(imgPath, postDatetime)
+                updateMetaTime(imgPath, postDatetime)
                 count += 1
                 continue
             print("Downloading " + did + " " + imgUrl)
@@ -165,7 +206,7 @@ def downloadDraw(bid, did, urls, usrDir, postDatetime, desc):
                 f.write(req.content)
 
             # exif manipulation
-            updateExifTime(imgPath, postDatetime)
+            updateMetaTime(imgPath, postDatetime)
 
         except Exception as e:
             print(e)
