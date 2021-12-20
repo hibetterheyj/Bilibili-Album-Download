@@ -30,5 +30,10 @@
 
 ## TODO
 
-- Add config files to record downloaded post!
+- Add log files to record downloaded post!
 - use wget method to download failed images
+- Add config files to given folder
+- [x] Add EXIF manipulation tools to modify image datetime
+    - piexif
+        ```pip install piexif`
+

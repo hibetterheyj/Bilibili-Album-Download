@@ -1,6 +1,9 @@
+import requests, os, sys, math
+
 import time, datetime
 from time import gmtime, strftime
-import requests, os, sys, math
+
+import piexif
 
 basicApiUrl = "https://api.vc.bilibili.com/link_draw/v1/doc/upload_count?uid="
 apiUrl = (
@@ -69,9 +72,9 @@ def downloadDrawList(bid, page, usrDir):
             did = str(i["doc_id"])
 
             # convert date from ctime in response
-            date = datetime.datetime.strptime(
+            postDatetime = datetime.datetime.strptime(
                 time.ctime(i["ctime"]), "%a %b %d %H:%M:%S %Y"
-            ).strftime("%Y_%m_%d")
+            )
 
             desc = i["description"]
 
@@ -82,19 +85,47 @@ def downloadDrawList(bid, page, usrDir):
                 count += 1
 
             # Download
-            downloadDraw(bid, did, urls, usrDir, date, desc)
+            downloadDraw(bid, did, urls, usrDir, postDatetime, desc)
     except Exception as e:
         print(e)
         pass
 
 
-# Download draws
-def downloadDraw(bid, did, urls, usrDir, date, desc):
-    # .strip() only removes the substrings from the string’s start and end position
-    if len(desc.replace("\n", "")) <= 10:
-        subdir = "{}_{}".format(date, desc.replace("\n", ""))
+def updateExifTime(imgPath, postDatetime):
+    newExifDate = postDatetime.strftime("%Y:%m:%d %H:%M:%S")
+
+    exif_dict = piexif.load(imgPath)
+    if not (piexif.ExifIFD.DateTimeOriginal in exif_dict["Exif"]) and not (
+        piexif.ExifIFD.DateTimeDigitized in exif_dict["Exif"]
+    ):
+        exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newExifDate
+        exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = newExifDate
+        exif_bytes = piexif.dump(exif_dict)
+        piexif.insert(exif_bytes, imgPath)
+        print("ExifTime updated!")
+    elif (piexif.ExifIFD.DateTimeOriginal in exif_dict["Exif"]) and (
+        piexif.ExifIFD.DateTimeDigitized in exif_dict["Exif"]
+    ):
+        # small images have exif information
+        pass
     else:
-        subdir = "{}_{}".format(date, desc.replace("\n", "")[:10])
+        if piexif.ExifIFD.DateTimeOriginal in exif_dict["Exif"]:
+            exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = newExifDate
+        else:
+            exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newExifDate
+        exif_bytes = piexif.dump(exif_dict)
+        piexif.insert(exif_bytes, imgPath)
+        print("ExifTime updated!")
+
+
+# Download draws
+def downloadDraw(bid, did, urls, usrDir, postDatetime, desc):
+    # .strip() only removes the substrings from the string’s start and end position
+    postDate = postDatetime.strftime("%Y_%m_%d")
+    if len(desc.replace("\n", "")) <= 10:
+        subdir = "{}_{}".format(postDate, desc.replace("\n", ""))
+    else:
+        subdir = "{}_{}".format(postDate, desc.replace("\n", "")[:10])
     subdirPath = os.path.join(usrDir, subdir)
     print("Image saved in", subdirPath)
     if not os.path.exists(subdirPath):
@@ -106,19 +137,24 @@ def downloadDraw(bid, did, urls, usrDir, date, desc):
     count = 0
     for i in range(len(urls)):
         imgUrl = urls[i]
+        # Get image format from url
+        suffix = imgUrl.split(".")[-1]
+
+        # File naming
+        ## bid: Bilibili user id
+        ## did: Draw id
+        # v1
+        # fileName = did + "_b" + str(count) + "." + suffix
+        # v2
+        # fileName = "{}_{}_b{}.{}".format(postDate, did, count, suffix)
+        fileName = "{}_b{}.{}".format(did, count, suffix)
+
+        imgPath = os.path.join(subdirPath, fileName)
+
         try:
-            # Get image format from url
-            suffix = imgUrl.split(".")[-1]
-
-            # File naming
-            ## bid: Bilibili user id
-            ## did: Draw id
-            fileName = did + "_b" + str(count) + "." + suffix
-
-            imgPath = os.path.join(subdirPath, fileName)
-
             if os.path.exists(imgPath):
                 print("Skipped " + did + " " + imgUrl)
+                updateExifTime(imgPath, postDatetime)
                 count += 1
                 continue
             print("Downloading " + did + " " + imgUrl)
@@ -127,6 +163,10 @@ def downloadDraw(bid, did, urls, usrDir, date, desc):
             # Create image file
             with open(imgPath, "wb") as f:
                 f.write(req.content)
+
+            # exif manipulation
+            updateExifTime(imgPath, postDatetime)
+
         except Exception as e:
             print(e)
             print("Fail to download: " + did + " " + imgUrl)
@@ -149,4 +189,5 @@ if __name__ == "__main__":
     totalPage = math.ceil(totalDraw / 30)
     # for page in range(totalPage):
     #     downloadDrawList(bid, page, baseDir="./")
-    downloadAll(bid, totalPage, baseDir="./")
+    # downloadAll(bid, totalPage, baseDir="./")
+    downloadAll(bid, totalPage, baseDir="/home/he/bili_photos")
